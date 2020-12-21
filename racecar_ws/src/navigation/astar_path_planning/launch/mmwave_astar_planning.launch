@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<launch>
+  <node name="tf2topic" pkg="astar_path_planning" type="tf2topic.py" output="screen" required="true"></node>
+
+  <arg name="veh" default="husky1" doc="robot type"/>
+  <arg name="use_odom" default="false" doc="If using odom when autonomous, i.e., robot does not know where it is but just chase the target"/>
+  <arg name="verbose" default="true" doc="whether to visualize the path marker"/>
+  <arg name="left" default="false" doc="Follow in left or right mode"/>
+  <arg name="radius" default="2.0" doc="Searching radius"/>
+  <arg name="sim" default="false" doc="If simulation"/>
+  <arg name="move" default="true" doc="Whether want the robot will move"/>
+  <arg name="timer_execution" default="0" doc="Autonomous mode planning timer"/>
+  <arg name="cml_verbose" default="false" doc=" Whether bash will output verbose target index of searching"/>
+
+  <group ns="$(arg veh)">
+    <param name="use_odom" value="$(arg use_odom)"/>
+
+    <!-- If sim, using gazebo pose (ground truth) as odometry source -->
+    <node pkg="astar_path_planning" type="sim_ground_node" name="sim_ground_node" if="$(arg sim)"/>
+
+    <!-- Velpdyne points to occupancy grid -->
+    <include file="$(find astar_path_planning)/launch/velodyne_to_grid.launch">
+      <arg unless="$(arg sim)" name="pc_topic" value="/$(arg veh)/mmwave_mapping" doc="Use mmwave or lidar"/>
+      <arg unless="$(arg sim)" name="robot_frame" value="/base_link" />
+      <arg unless="$(arg sim)" name="lidar_frame" value="/base_link" />
+      <arg unless="$(arg sim)" name="config_file" value="mmWave_to_grid" />
+      <arg if="$(arg sim)" name="pc_topic" value="/X1/points" />
+      <arg if="$(arg sim)" name="robot_frame" value="/X1/base_link" />
+      <arg if="$(arg sim)" name="lidar_frame" value="/X1/base_link/front_laser" />
+    </include>
+
+    <!-- Wall following automatically -->
+    <node pkg="astar_path_planning" type="wall_following_node" name="astar_node" output="screen" respawn="true">
+      <param name="verbose" value="$(arg verbose)"/>
+      <param name="cml_verbose" value="$(arg cml_verbose)"/>
+      <param name="left" value="$(arg left)"/>
+      <param name="radius" value="$(arg radius)"/>
+      <param name="timer_execution" value="$(arg timer_execution)" />
+      <param unless="$(arg sim)" name="robot_frame" value="/base_link" />
+      <param if="$(arg sim)" name="robot_frame" value="/X1/base_link" />
+      <remap from="astar_node/occupancy_grid" to="velodyne_to_grid/occupancy_grid"/>
+    </node>
+
+
+    <!-- Convert path to single point -->
+    <node pkg="astar_path_planning" type="pure_pursuit_point.py" name="path_to_pose" output="screen">
+      <remap from="planning_path" to="astar_node/planned_path"/>
+    </node>
+    <node pkg="astar_path_planning" type="subt_pid.py" name="subt_pid_node" output="screen">
+      <!-- Output remapping -->
+      <remap unless="$(arg sim)" from="subt_pid_node/cmd_vel" to="husky_velocity_controller/cmd_vel"/>
+      <remap if="$(arg sim)" from="subt_pid_node/cmd_vel" to="/X1/cmd_vel"/>
+    </node>
+
+    <node pkg="astar_path_planning" type="joystick_state.py" name="joystick_state" output="screen">
+      <param unless="$(arg sim)" name="joy_name" value="joy_teleop/joy"/>
+      <param if="$(arg sim)" name="joy_name" value="/joy"/>
+    </node>
+
+    <!-- Load dynamic reconfigure -->
+    <node pkg="dynamic_reconfigure" type="dynparam" name="load_pos_param" args="load /husky/subt_pid_node/Position $(find astar_path_planning)/config/subt_pos.yaml"/>
+    <node pkg="dynamic_reconfigure" type="dynparam" name="load_ang_param" args="load /husky/subt_pid_node/Angular $(find astar_path_planning)/config/subt_ang.yaml"/>
+
+  </group>  <!-- End namespace -->
+</launch>

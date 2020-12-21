@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<launch>
+    <arg name="config_file" default="velodyne_to_grid"/>
+    <arg name="pc_topic" default="/husky1/velodyne1/velodyne_points" doc="source of pointcloud topic"/>
+    <arg name="robot_frame" default="/base_link" doc="robot base link" />
+    <arg name="lidar_frame" default="velodyne1" doc="sensor tf name" />
+
+    <node pkg="astar_path_planning" name="velodyne_to_grid" type="velodyne_to_grid_new" output="screen" clear_params="true" required="true">
+      <rosparam command="load" file="$(find astar_path_planning)/config/$(arg config_file).yaml"/>
+      <param name="robot_frame" value="$(arg robot_frame)"/>
+      <param name="lidar_frame" value="$(arg lidar_frame)"/>
+      <remap from="/velodyne_points" to="$(arg pc_topic)"/>
+    </node>
+</launch>
